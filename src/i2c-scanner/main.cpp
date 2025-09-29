@@ -6,15 +6,10 @@ void setup() {
     Serial.begin(115200);
     Serial.println();
     Serial.println("I2C Scanner");
-
-    // Initialize I2C
-    Wire.pins(4, 5); // SDA = GPIO4, SCL = GPIO5
-    Wire.begin();
-    Serial.println("I2C Scanner started");
 }
-void loop() {
-    Serial.println("Scanning I2C bus...");
 
+// returns number of devices found
+int scan() {
     // Scan for devices
     byte error, address;
     int nDevices = 0;
@@ -35,12 +30,38 @@ void loop() {
         }
     }
 
-    if (nDevices == 0) {
-        Serial.println("No I2C devices found");
-    } else {
-        Serial.print(nDevices);
-        Serial.println(" I2C devices found");
+    return nDevices;
+}
+
+
+// List of pins to scan. Each pin can be used as SDA or SCL.
+uint8_t allowed_pins[] = {
+    // GPIO     Wemos D1 Mini   NodeMCU
+    4,  //        D2              D2
+    5,  //        D1              D1
+    12, //        D6              D6
+    13, //        D7              D7
+    14  //        D5              D5
+};
+
+void loop() {
+    for (auto scl : allowed_pins) {
+        for (auto sda : allowed_pins) {
+            if (sda == scl) {
+                continue; // skip same pin for SDA and SCL
+            }
+
+            Wire.pins(sda, scl);
+            Wire.begin();
+
+            auto devices_found = scan();
+
+            if (devices_found) {
+                Serial.printf("%d I2C devices found on SDA: %d, SCL: %d\n", devices_found, sda, scl);
+            }
+        }
     }
 
-    delay(5000); // Wait before next scan
+    Serial.println();
+    delay(1000); // Wait before next scan
 }
