@@ -1,3 +1,12 @@
 [submodule "lib/FastLED"]
 	path = lib/FastLED
 	url = https://github.com/FastLED/FastLED.git
+[submodule "lib/Adafruit_MPU6050"]
+	path = lib/Adafruit_MPU6050
+	url = https://github.com/eagafonov/Adafruit_MPU6050.git
+[submodule "lib/Adafruit_BusIO"]
+	path = lib/Adafruit_BusIO
+	url = https://github.com/adafruit/Adafruit_BusIO.git
+[submodule "lib/Adafruit_Sensor"]
+	path = lib/Adafruit_Sensor
+	url = https://github.com/adafruit/Adafruit_Sensor.git
