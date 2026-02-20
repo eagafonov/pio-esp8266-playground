@@ -483,6 +483,18 @@ readGPIOAB x 2  720    1460    2960
                                              ```````````````````````````````````
 */
 
+const char* helpText = R"(
+Commands:
+  h/?    Show this help
+  m      Toggle clock mode (manual/automatic)
+  p      Single clock pulse
+  space  Pause (auto->manual) or step (manual)
+  +/=    Increase clock speed (switches to automatic)
+  -/_    Decrease clock speed (automatic only)
+  1-9    Set clock speed directly (switches to automatic)
+  0      Stop clock
+)";
+
 void handleSerialInput() {
   if (!Serial.available()) {
     return;
@@ -524,6 +536,8 @@ void handleSerialInput() {
   } else if (c == '0') { // Stop clock
     stopClock();
     Serial.println("Clock stopped");
+  } else if (c == 'h' || c == '?') {
+    Serial.println(helpText);
   }
 }
 
