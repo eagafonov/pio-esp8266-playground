@@ -1,6 +1,12 @@
 #include <FastLED.h>
 
-#define LED_PIN     5 // GPIO5 on ESP8266, D1 on NodeMCU
+//                    GPIO      Dx
+#define LED_PIN         14   // D5
+#define POWER_CTRL_PIN  16   // D0
+#define BUTTON_PIN_0    0    // D3 (Flash button)
+#define BUTTON_PIN_1    13   // D7
+#define BUTTON_PIN_2    12   // D6
+
 #define COLOR_ORDER GRB
 #define CHIPSET     WS2812B
 // #define NUM_LEDS    (8)
@@ -8,7 +14,8 @@
 // #define NUM_LEDS    (8 * 32) // single panel 8x32 matrix
 #define NUM_LEDS    (16 * 32) // double panel 16x32 matrix
 
-#define BRIGHTNESS  100
+#define BRIGHTNESS  10
+#define BRIGHTNESS_MAX 100
 #define FRAMES_PER_SECOND 20
 
 bool gReverseDirection = false;
@@ -247,12 +254,17 @@ void RunningLine() {
 // The dynamic palette shows how you can change the basic 'hue' of the
 // color palette every time through the loop, producing "rainbow fire".
 
+void IRAM_ATTR handleButtonPress();
+void readButtonState();
+
+int currentBrightness = BRIGHTNESS;
+
 void setup() {
   delay(1000); // sanity delay
   Serial.begin(115200);
   Serial.println("Fire2012 with Palette");
   FastLED.addLeds<CHIPSET, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
-  FastLED.setBrightness( BRIGHTNESS );
+  FastLED.setBrightness( currentBrightness );
 
   // This first palette is the basic 'black body radiation' colors,
   // which run from black to red to bright yellow to white.
@@ -268,7 +280,89 @@ void setup() {
   // Third, here's a simpler, three-step gradient, from black to red to white
   //   gPal = CRGBPalette16( CRGB::Black, CRGB::Red, CRGB::White);
 
+  // LED Power control pin
+  pinMode(POWER_CTRL_PIN, OUTPUT);
+  digitalWrite(POWER_CTRL_PIN, LOW); //Disable power to LEDs initially
+  delay(1000);
+  digitalWrite(POWER_CTRL_PIN, HIGH); //Enable power to LEDs
+
+  // Button pins
+  pinMode(BUTTON_PIN_0, INPUT_PULLUP);
+  pinMode(BUTTON_PIN_1, INPUT_PULLUP);
+  pinMode(BUTTON_PIN_2, INPUT_PULLUP);
+
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN_0), handleButtonPress, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN_1), handleButtonPress, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN_2), handleButtonPress, FALLING);
+
+  readButtonState();
 }
+
+// Button
+// volatile bool buttonPressed0 = false;
+// volatile bool buttonPressed1 = false;
+// volatile bool buttonPressed2 = false;
+
+volatile  uint8_t buttonsState = 0;
+
+volatile unsigned long lastInterruptTime = 0;
+const unsigned long debounceDelay = 50; // 50ms debounce
+
+// Interrupt Service Routine (ISR)
+void IRAM_ATTR handleButtonPress() {
+  unsigned long interruptTime = millis();
+
+  // Debounce: ignore interrupts that occur too quickly
+  if (interruptTime - lastInterruptTime > debounceDelay) {
+    lastInterruptTime = interruptTime;
+
+    // read the pin state to clear the interrupt (optional)
+    // volatile read to ensure compiler does not optimize it away
+    readButtonState();
+  }
+}
+
+void readButtonState() {
+    // Button inputs are pulled HIGH, pressed state is LOW
+
+    buttonsState = ((digitalRead(BUTTON_PIN_0) ? 0 : 1) << 0) |
+                   ((digitalRead(BUTTON_PIN_1) ? 0 : 1) << 1) |
+                   ((digitalRead(BUTTON_PIN_2) ? 0 : 1) << 2);
+}
+
+bool powerEnabled = true;
+
+void setLedPower(bool powerState) {
+  powerEnabled = powerState;
+  Serial.printf("LED Power: %s\n", powerEnabled ? "ON" : "OFF");
+  digitalWrite(POWER_CTRL_PIN, powerEnabled ? HIGH : LOW);
+}
+
+void toggleLedPower() {
+  setLedPower(!powerEnabled);
+}
+
+void adjustBrightness(int change) {
+  currentBrightness += change;
+
+  if (currentBrightness < 0) {
+    currentBrightness = 0;
+  } else if (currentBrightness > BRIGHTNESS_MAX) {
+    currentBrightness = BRIGHTNESS_MAX;
+  }
+
+  if (currentBrightness == 0) {
+    setLedPower(false); // Disable power to LEDs
+  } else {
+    setLedPower(true); // Enable power to LEDs
+  }
+
+  FastLED.setBrightness(currentBrightness);
+  Serial.printf("Brightness set to: %d\n", currentBrightness);
+}
+
+
+int c = 0;
 
 void loop()
 {
@@ -281,18 +375,54 @@ void loop()
   // to a light color based on the hue, to white.
   //
 
-  // static uint8_t hue = 0;
-  // hue++;
-  // CRGB darkcolor  = CHSV(hue,255,192); // pure hue, three-quarters brightness
-  // CRGB lightcolor = CHSV(hue,128,255); // half 'whitened', full brightness
-  // gPal = CRGBPalette16( CRGB::Black, darkcolor, lightcolor, CRGB::White);
+  if (currentBrightness > 0) {
+    static uint8_t hue = 0;
+    hue++;
+    CRGB darkcolor  = CHSV(hue,255,192); // pure hue, three-quarters brightness
+    CRGB lightcolor = CHSV(hue,128,255); // half 'whitened', full brightness
+    gPal = CRGBPalette16( CRGB::Black, darkcolor, lightcolor, CRGB::White);
 
-
-  // Fire2012WithPalette(); // run simulation frame, using palette colors
-  // RunningPixel(); // run a simple running pixel effect
-  RunningPixelFullPanel(); // run a simple running line effect
-  Pong();
+    Fire2012WithPalette(); // run simulation frame, using palette colors
+    // RunningPixel(); // run a simple running pixel effect
+    // RunningPixelFullPanel(); // run a simple running line effect
+    // Pong();
+  }
 
   FastLED.show(); // display this frame
   // FastLED.delay(1000 / FRAMES_PER_SECOND);
+
+  // Check if button was pressed
+  if (buttonsState & 0x01) { // Button 0 pressed
+    // Reset
+    buttonsState &= ~0x01; // Clear flag
+    Serial.printf("%d: Button #0 pressed\r\n", c++);
+    toggleLedPower();
+  }
+
+  if (buttonsState & 0x02) { // Button 1 pressed
+    buttonsState &= ~0x02; // Clear flag
+    Serial.printf("%d: Button #1 pressed\r\n", c++);
+
+    // Serial.println("Button #1 pressed");
+    adjustBrightness(5);
+  }
+
+  if (buttonsState & 0x04) { // Button 2 pressed
+    buttonsState &= ~0x04; // Clear flag
+    Serial.printf("%d: Button #2 pressed\r\n", c++);
+    adjustBrightness(-5);
+  }
+
+  // Calculate frame time
+  static unsigned long lastFrameTime = 0;
+  unsigned long currentTime = millis();
+  unsigned long frameTime = currentTime - lastFrameTime;
+  lastFrameTime = currentTime;
+
+  // Print frame time for debugging once every second
+  static unsigned long lastDebugTime = 0;
+  if (currentTime - lastDebugTime >= 1000) {
+    lastDebugTime = currentTime;
+    Serial.printf("FPS: %d (Frame Time: %lu ms)\r\n", 1000 / frameTime, frameTime);
+  }
 }
