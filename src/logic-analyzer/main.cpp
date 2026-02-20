@@ -483,10 +483,56 @@ readGPIOAB x 2  720    1460    2960
                                              ```````````````````````````````````
 */
 
+void handleSerialInput() {
+  if (!Serial.available()) {
+    return;
+  }
+
+  char c = Serial.read();
+
+  if (c == 'm') {
+    toggleClockMode();
+  } else if (c == 'p') {
+    singleClockPulse(100);
+  } else if (c == '+' || c == '=') {  // Increase clock speed, switch to automatic mode
+    if (clockMode == ClockMode::MANUAL) {
+      toggleClockMode();
+    } else {
+      incClockIndex();
+    }
+  } else if (c == '-' || c == '_') {   // Decrease clock speed (automatic mode only)
+    if (clockMode == ClockMode::AUTOMATIC) {
+      decClockIndex();
+    }
+  } else if (c == ' ') { // Single step, switch to manual mode if currently in automatic
+    if (clockMode == ClockMode::AUTOMATIC) {
+      toggleClockMode();
+    } else {
+      singleClockPulse(100);
+    }
+  }
+  else if (c >= '1' && c <= '9') { // 1-9 change clock speed directly
+    int index = c - '0';
+    if (index < (sizeof(clockPulseIntervals) / sizeof(clockPulseIntervals[0]))) {
+      if (clockMode == ClockMode::MANUAL) {
+        toggleClockMode();
+      }
+      clockIndex = index;
+      setClock(clockIndex);
+      Serial.printf("Clock index set to %d (%d ms)\r\n", clockIndex, clockPulseIntervals[clockIndex]);
+    }
+  } else if (c == '0') { // Stop clock
+    stopClock();
+    Serial.println("Clock stopped");
+  }
+}
+
 void loop() {
   if (!setupOk) {
     return;
   }
+
+  handleSerialInput();
 
   // print stats once a second
 #ifdef DEBUG_LOOP_COUNTER
