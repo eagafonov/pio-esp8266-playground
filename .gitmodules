@@ -10,3 +10,6 @@
 [submodule "lib/Adafruit_Sensor"]
 	path = lib/Adafruit_Sensor
 	url = https://github.com/adafruit/Adafruit_Sensor.git
+[submodule "lib/ESPRotary"]
+	path = lib/ESPRotary
+	url = https://github.com/LennartHennigs/ESPRotary.git
