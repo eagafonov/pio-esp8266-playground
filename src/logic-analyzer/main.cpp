@@ -2,6 +2,8 @@
 #include <ESPRotary.h>
 #include <Adafruit_MCP23X17.h>
 #include <Wire.h>
+#include "protocol.h"
+#include "debug.h"
 
 #define EXTERNAL_LED_PIN 14 // GPIO14 on ESP8266, D5 on NodeMCU
 // #define BUTTON_PIN 16        // GPI15 on ESP8266, D8 on NodeMCU
@@ -197,6 +199,9 @@ void onLeft(ESPRotary& r) {
 
 Adafruit_MCP23X17 mcp0;
 Adafruit_MCP23X17 mcp1;
+
+// Binary protocol instance
+Protocol protocol;
 
 
 typedef struct {
@@ -412,12 +417,133 @@ void singleClockPulse(unsigned long duration) {
   }
 }
 
+/////////////////////////////////////////
+// Binary Protocol Callback Handlers
+/////////////////////////////////////////
+
+void protocolOnSetClockMode(uint8_t mode) {
+  DEBUG_EVENT("SET_CLOCK_MODE: %s\r\n", mode == PROTO_CLOCK_MANUAL ? "MANUAL" : "AUTOMATIC");
+
+  if (mode == PROTO_CLOCK_MANUAL) {
+    if (clockMode != ClockMode::MANUAL) {
+      toggleClockMode();
+    }
+  } else if (mode == PROTO_CLOCK_AUTOMATIC) {
+    if (clockMode != ClockMode::AUTOMATIC) {
+      toggleClockMode();
+    }
+  }
+}
+
+/**
+ * Handle SET_CLOCK_SPEED command.
+ *
+ * This callback is invoked when a SET_CLOCK_SPEED command is received from the client.
+ *
+ * @param index Clock speed index (must be valid index into clockPulseIntervals array)
+ * @return true if index is valid and speed was changed, false if index is invalid
+ *
+ * Return value behavior:
+ * - true: Index is valid, clock speed was changed successfully
+ *   → Protocol sends status byte 0x00 (success)
+ * - false: Index is invalid (out of range)
+ *   → Protocol sends status byte 0x01 (error: invalid index)
+ *
+ * The return value is sent back to the client as a status byte in the ACK response,
+ * allowing the client to immediately know if the command succeeded without needing
+ * to call GET_STATUS.
+ */
+bool protocolOnSetClockSpeed(uint8_t index) {
+  DEBUG_EVENT("SET_CLOCK_SPEED: index=%d\r\n", index);
+
+  if (index < (sizeof(clockPulseIntervals) / sizeof(clockPulseIntervals[0]))) {
+    clockIndex = index;
+    setClock(clockIndex);
+    return true;  // Valid index, speed changed
+  } else {
+    DEBUG_ERROR("[ERROR] Invalid clock speed index: %d\r\n", index);
+    return false;  // Invalid index
+  }
+}
+
+/**
+ * Handle CLOCK_PULSE command.
+ *
+ * This callback is invoked when a CLOCK_PULSE command is received from the client.
+ *
+ * @param duration Pulse duration in milliseconds
+ * @return true if the pulse was executed (manual mode), false if ignored (automatic mode)
+ *
+ * Return value behavior:
+ * - true: Pulse was executed successfully (clock is in manual mode)
+ *   → Protocol sends status byte 0x00 (success)
+ * - false: Pulse was ignored because clock is in automatic mode
+ *   → Protocol sends status byte 0x01 (error: wrong mode)
+ *
+ * The return value is sent back to the client as a status byte in the ACK response,
+ * allowing the client to distinguish between "command accepted and executed" vs
+ * "command accepted but ignored".
+ */
+bool protocolOnClockPulse(uint16_t duration) {
+  if (clockMode == ClockMode::MANUAL) {
+    singleClockPulse(duration);
+    return true;  // Pulse executed
+  }
+  return false;  // Pulse ignored (automatic mode)
+}
+
+void protocolOnStartStreaming(uint8_t flags) {
+  // Streaming is enabled, bus state updates will be sent automatically
+  DEBUG_EVENT("Streaming STARTED\r\n");
+  (void)flags; // Reserved for future use
+}
+
+void protocolOnStopStreaming() {
+  // Streaming is disabled in protocol handler
+  DEBUG_EVENT("Streaming STOPPED\r\n");
+}
 
 bool setupOk = false;
+
+void protocolOnGetStatus() {
+  DEBUG_EVENT("GET_STATUS request\r\n");
+
+  // Get current bus state (use dummy values if MCP not ready)
+  uint16_t addressBus = 0x0000;
+  uint16_t dataBusFlags = 0x0000;
+
+  if (setupOk) {
+    addressBus = mcp0.readGPIOAB();
+    dataBusFlags = mcp1.readGPIOAB();
+  }
+
+  Flags flags = { .data = (uint8_t)(dataBusFlags >> 8) };
+
+  uint8_t mode = (clockMode == ClockMode::AUTOMATIC) ? PROTO_CLOCK_AUTOMATIC : PROTO_CLOCK_MANUAL;
+
+  protocol.sendStatusReport(mode, clockIndex, clockCounter,
+                           addressBus, dataBusFlags & 0xFF, flags.data);
+}
+
+void protocolOnResetCounter() {
+  DEBUG_EVENT("RESET_COUNTER\r\n");
+  clockCounter = 0;
+}
+
+void protocolOnPing() {
+  DEBUG_EVENT("PING received\r\n");
+  // Response (PONG) is sent automatically by protocol handler
+}
+
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
+  DEBUG_BEGIN(115200);
+
+  DEBUG_EVENT("=== 65C02 Logic Analyzer Starting ===\r\n");
+  DEBUG_EVENT("Build: %s %s\r\n", __DATE__, __TIME__);
+
   Serial.println();
   Serial.println("Hello from PIO - Button Interrupt Demo");
 
@@ -447,22 +573,41 @@ void setup() {
 
   if (!mcp0.begin_I2C(0x20, &Wire)) {
     Serial.println("Error initializing MCP23017 0x20. Check connections.");
+    DEBUG_ERROR("[ERROR] MCP23017 0x20 init failed\r\n");
     return;
   } else {
     Serial.println("MCP23017 0x20 initialized successfully.");
+    DEBUG_EVENT("MCP23017 0x20 OK\r\n");
   }
 
   if (!mcp1.begin_I2C(0x21, &Wire)) {
     Serial.println("Error initializing MCP23017 0x21. Check connections.");
+    DEBUG_ERROR("[ERROR] MCP23017 0x21 init failed\r\n");
     return;
   } else {
     Serial.println("MCP23017 0x21 initialized successfully.");
+    DEBUG_EVENT("MCP23017 0x21 OK\r\n");
   }
 
   Wire.setClock(400000); // 400kHz is max for WeMo D1 Mini (ESP8266 at 80MHz)
 
+  // Initialize binary protocol
+  protocol.begin();
+  protocol.onSetClockMode = protocolOnSetClockMode;
+  protocol.onSetClockSpeed = protocolOnSetClockSpeed;
+  protocol.onClockPulse = protocolOnClockPulse;
+  protocol.onStartStreaming = protocolOnStartStreaming;
+  protocol.onStopStreaming = protocolOnStopStreaming;
+  protocol.onGetStatus = protocolOnGetStatus;
+  protocol.onResetCounter = protocolOnResetCounter;
+  protocol.onPing = protocolOnPing;
+
+  Serial.println("Binary protocol initialized");
+  DEBUG_EVENT("Binary protocol initialized\r\n");
+
   clockMode = ClockMode::AUTOMATIC;
   setClock(1); // Start with 1 Hz pulsing
+  DEBUG_EVENT("Clock mode: AUTOMATIC, speed index: 1\r\n");
 
   printClockMode();
 
@@ -495,13 +640,7 @@ Commands:
   0      Stop clock
 )";
 
-void handleSerialInput() {
-  if (!Serial.available()) {
-    return;
-  }
-
-  char c = Serial.read();
-
+void handleSerialInput(char c) {
   if (c == 'm') {
     toggleClockMode();
   } else if (c == 'p') {
@@ -546,7 +685,13 @@ void loop() {
     return;
   }
 
-  handleSerialInput();
+  // Process binary protocol messages
+  uint8_t textByte = protocol.update();
+
+  // If protocol returned a text command byte, handle it
+  if (textByte != 0) {
+    handleSerialInput(textByte);
+  }
 
   // print stats once a second
 #ifdef DEBUG_LOOP_COUNTER
@@ -610,7 +755,12 @@ void loop() {
       }
 
       if (flags.bits.clock == 0) {
-        printBusState(addressBus, dataBusFlags & 0xFF, flags, clockCounter);
+        // Send bus state via binary protocol if streaming is enabled
+        if (protocol.isStreaming()) {
+          protocol.sendBusState(clockCounter, addressBus, dataBusFlags & 0xFF, flags.data);
+        } else {
+          printBusState(addressBus, dataBusFlags & 0xFF, flags, clockCounter);
+        }
       }
 
       lastAddressBus = addressBus;

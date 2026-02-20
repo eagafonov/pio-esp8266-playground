@@ -1,0 +1,7 @@
+# Logic Analyzer Python Client Dependencies
+
+# Serial communication
+pyserial>=3.5
+
+# CRC calculation library
+crc>=4.0.0
