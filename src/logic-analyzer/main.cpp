@@ -418,7 +418,12 @@ void singleClockPulse(unsigned long duration) {
 
   Flags flags= { .data = dataBusFlags >> 8 };
 
-  printBusState(addressBus, dataBusFlags & 0xFF, flags, clockCounter);
+  // Send bus state via binary protocol if streaming, otherwise print to Serial
+  if (protocol.isStreaming()) {
+    protocol.sendBusState(clockCounter, addressBus, dataBusFlags & 0xFF, flags.data);
+  } else {
+    printBusState(addressBus, dataBusFlags & 0xFF, flags, clockCounter);
+  }
 
   // Keep clock zero if reset is active
   if (!flags.bits.resetb) {
