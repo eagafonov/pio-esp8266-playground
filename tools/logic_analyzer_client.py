@@ -14,11 +14,19 @@ Usage:
     # Set clock mode
     client.set_clock_mode('automatic')
 
-    # Start streaming
-    def on_bus_state(counter, address, data, flags):
-        print(f"Clock: {counter}, Addr: 0x{address:04X}, Data: 0x{data:02X}")
+    # Start streaming (shows bus states + clock mode/speed change events)
+    def on_bus_state(state):
+        print(f"[BUS] Clock: {state.clock_counter}, Addr: 0x{state.address_bus:04X}, Data: 0x{state.data_bus:02X}")
+
+    def on_mode_changed(mode):
+        print(f"[EVENT] Clock mode: {mode.name}")
+
+    def on_speed_changed(index):
+        print(f"[EVENT] Clock speed index: {index}")
 
     client.on_bus_state = on_bus_state
+    client.on_clock_mode_changed = on_mode_changed
+    client.on_clock_speed_changed = on_speed_changed
     client.start_streaming()
 
     # Keep receiving data
@@ -80,6 +88,10 @@ class ResponseType(IntEnum):
     STATUS_REPORT = 0x82
     BUS_STATE = 0x83
     PONG = 0x84
+
+    # Events
+    EVENT_CLOCK_MODE_CHANGED = 0x90
+    EVENT_CLOCK_SPEED_CHANGED = 0x91
 
 
 class ClockMode(IntEnum):
@@ -210,6 +222,8 @@ class LogicAnalyzerClient:
         self.on_status_report: Optional[Callable[[StatusReport], None]] = None
         self.on_pong: Optional[Callable[[PongResponse], None]] = None
         self.on_error: Optional[Callable[[ProtocolError], None]] = None
+        self.on_clock_mode_changed: Optional[Callable[[ClockMode], None]] = None
+        self.on_clock_speed_changed: Optional[Callable[[int], None]] = None
 
         # Response waiting
         self._waiting_response = False
@@ -315,7 +329,7 @@ class LogicAnalyzerClient:
         # Verify checksum (type + length + payload)
         checksum_data = packet[:2 + payload_length]  # type + length + payload
         expected_checksum = self._crc_calculator.checksum(checksum_data)
-        
+
         if checksum != expected_checksum:
             print(f"CRC-8 checksum error: expected 0x{expected_checksum:02X}, got 0x{checksum:02X}")
             return
@@ -331,8 +345,12 @@ class LogicAnalyzerClient:
             self._handle_bus_state(payload)
         elif message_type == ResponseType.PONG:
             self._handle_pong(payload)
+        elif message_type == ResponseType.EVENT_CLOCK_MODE_CHANGED:
+            self._handle_clock_mode_changed(payload)
+        elif message_type == ResponseType.EVENT_CLOCK_SPEED_CHANGED:
+            self._handle_clock_speed_changed(payload)
         else:
-            print(f"Unknown message type: 0x{message_type:02X}")
+            print(f"Unknown message type: 0x{message_type:02X} {payload_length}: {payload.hex()}")
 
     def _process_discarded_bytes(self):
         """Process bytes that were discarded while waiting for start byte (for debugging)"""
@@ -410,6 +428,20 @@ class LogicAnalyzerClient:
             if self.on_pong:
                 self.on_pong(pong)
             self._response_data = ('PONG', pong)
+
+    def _handle_clock_mode_changed(self, payload: bytes):
+        """Handle EVENT_CLOCK_MODE_CHANGED event"""
+        if len(payload) >= 1:
+            mode = ClockMode(payload[0])
+            if self.on_clock_mode_changed:
+                self.on_clock_mode_changed(mode)
+
+    def _handle_clock_speed_changed(self, payload: bytes):
+        """Handle EVENT_CLOCK_SPEED_CHANGED event"""
+        if len(payload) >= 1:
+            clock_index = payload[0]
+            if self.on_clock_speed_changed:
+                self.on_clock_speed_changed(clock_index)
 
     def update(self, timeout: Optional[float] = None):
         """
@@ -656,7 +688,7 @@ if __name__ == '__main__':
     parser.add_argument('--mode', choices=['manual', 'automatic'], help='Set clock mode')
     parser.add_argument('--speed', type=int, metavar='INDEX', help='Set clock speed index (0-11)')
     parser.add_argument('--pulse', type=int, metavar='DURATION', nargs='?', const=100, help='Single clock pulse')
-    parser.add_argument('--stream', action='store_true', help='Start streaming bus states')
+    parser.add_argument('--stream', action='store_true', help='Start streaming (shows bus states and events)')
     parser.add_argument('--reset', action='store_true', help='Reset clock counter')
 
     args = parser.parse_args()
@@ -709,10 +741,23 @@ if __name__ == '__main__':
         if args.stream:
             print("Starting streaming... (Press Ctrl+C to stop)")
 
+            # Subscribe to ALL callbacks - bus states AND events
             def print_bus_state(state: BusState):
-                print(state)
+                print(f"[BUS]   {state}")
 
+            def print_clock_mode_changed(mode: ClockMode):
+                mode_str = "Automatic" if mode == ClockMode.AUTOMATIC else "Manual"
+                print(f"[EVENT] Clock mode: {mode_str}")
+
+            def print_clock_speed_changed(index: int):
+                print(f"[EVENT] Clock speed: index {index}")
+
+            # Register all callbacks
             client.on_bus_state = print_bus_state
+            client.on_clock_mode_changed = print_clock_mode_changed
+            client.on_clock_speed_changed = print_clock_speed_changed
+
+            # Start streaming
             client.start_streaming()
 
             try:

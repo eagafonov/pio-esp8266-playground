@@ -67,6 +67,9 @@ typedef union {
 
 void printBusState(uint16_t addressBus, uint8_t data, Flags flags, unsigned long clockCounter);
 
+// Binary protocol instance
+Protocol protocol;
+
 /////////////////////////////////
 // Clock mode and pulsing logic
 /////////////////////////////////
@@ -102,18 +105,26 @@ void stopClock() {
 void incClockIndex() {
   if (clockIndex < (sizeof(clockPulseIntervals) / sizeof(clockPulseIntervals[0])) - 1) {
     clockIndex++;
-    Serial.printf("Clock index increased to %d (%d ms)\r\n", clockIndex, clockPulseIntervals[clockIndex]);
-
     setClock(clockIndex);
+
+    if (protocol.isStreaming()) {
+      protocol.sendEvent(EVENT_CLOCK_SPEED_CHANGED, clockIndex);
+    } else {
+      Serial.printf("Clock index increased to %d (%d ms)\r\n", clockIndex, clockPulseIntervals[clockIndex]);
+    }
   }
 }
 
 void decClockIndex() {
   if (clockIndex > 0) {
     clockIndex--;
-    Serial.printf("Clock index decreased to %d (%d ms)\r\n", clockIndex, clockPulseIntervals[clockIndex]);
-
     setClock(clockIndex);
+
+    if (protocol.isStreaming()) {
+      protocol.sendEvent(EVENT_CLOCK_SPEED_CHANGED, clockIndex);
+    } else {
+      Serial.printf("Clock index decreased to %d (%d ms)\r\n", clockIndex, clockPulseIntervals[clockIndex]);
+    }
   }
 }
 
@@ -138,7 +149,11 @@ void toggleClockMode() {
     stopClock();
   }
 
-  printClockMode();
+  if (protocol.isStreaming()) {
+    protocol.sendEvent(EVENT_CLOCK_MODE_CHANGED, static_cast<uint8_t>(clockMode));
+  } else {
+    printClockMode();
+  }
 }
 
 ////////////////////
@@ -199,10 +214,6 @@ void onLeft(ESPRotary& r) {
 
 Adafruit_MCP23X17 mcp0;
 Adafruit_MCP23X17 mcp1;
-
-// Binary protocol instance
-Protocol protocol;
-
 
 typedef struct {
     uint8_t rwb : 1;   // Read/Write Bar
@@ -459,6 +470,11 @@ bool protocolOnSetClockSpeed(uint8_t index) {
   if (index < (sizeof(clockPulseIntervals) / sizeof(clockPulseIntervals[0]))) {
     clockIndex = index;
     setClock(clockIndex);
+
+    if (protocol.isStreaming()) {
+      protocol.sendEvent(EVENT_CLOCK_SPEED_CHANGED, clockIndex);
+    }
+
     return true;  // Valid index, speed changed
   } else {
     DEBUG_ERROR("[ERROR] Invalid clock speed index: %d\r\n", index);

@@ -49,6 +49,9 @@ enum ResponseType : uint8_t {
   RESP_STATUS_REPORT = 0x82,
   RESP_BUS_STATE = 0x83,
   RESP_PONG = 0x84,
+
+  EVENT_CLOCK_MODE_CHANGED = 0x90,
+  EVENT_CLOCK_SPEED_CHANGED = 0x91,
 };
 
 // Clock modes
@@ -147,6 +150,7 @@ public:
   // Send responses/events
   void sendAck(uint8_t ackedCommand);
   void sendAck(uint8_t ackedCommand, uint8_t dataByte);
+  void sendEvent(uint8_t eventType, uint8_t eventData);
   void sendError(uint8_t failedCommand, uint8_t errorCode);
   void sendStatusReport(uint8_t mode, uint8_t clockIndex, uint32_t clockCounter,
                         uint16_t addressBus, uint8_t dataBus, uint8_t flags);

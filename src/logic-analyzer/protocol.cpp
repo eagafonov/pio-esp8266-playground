@@ -239,6 +239,11 @@ void Protocol::sendPong() {
   sendPacket(RESP_PONG, (uint8_t*)&payload, sizeof(payload));
 }
 
+void Protocol::sendEvent(uint8_t eventType, uint8_t eventData) {
+  uint8_t payload[1] = { eventData };
+  sendPacket(eventType, payload, 1);
+}
+
 // Command handlers
 void Protocol::handleSetClockMode(const uint8_t* payload, uint8_t length) {
   if (length != sizeof(SetClockModePayload)) {
