@@ -170,6 +170,8 @@ public:
   // Get streaming state
   bool isStreaming() const { return streaming; }
 
+  void setStreaming(bool enable) { streaming = enable; }
+
 private:
   // Parser state
   ParserState state;

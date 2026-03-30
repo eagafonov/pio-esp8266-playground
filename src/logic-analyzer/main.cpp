@@ -698,6 +698,8 @@ void handleSerialInput(char c) {
     Serial.println("Clock stopped");
   } else if (c == 'h' || c == '?') {
     Serial.println(helpText);
+  } else if (c == 's') { // switch to binary streaming mode for testing
+    protocol.setStreaming(true);
   }
 }
 
