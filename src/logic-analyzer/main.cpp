@@ -20,6 +20,9 @@
 #define ROTARY_PIN1 12    // GPIO12 on ESP8266, D6 on NodeMCU
 #define ROTARY_PIN2 13    // GPIO13 on ESP8266, D7 on NodeMCU
 
+// #define MCP_RESET_PIN BUILTIN_LED_PIN   // Shared reset pin for MCP23017 chips (active LOW)
+#define MCP_RESET_PIN 15 // GPIO15 on ESP8266, D8 on NodeMCU
+
 #define LED_PIN EXTERNAL_LED_PIN
 
 // NOTE: GPIO16 (D0) doesn't support interrupts on ESP8266
@@ -556,6 +559,10 @@ void protocolOnPing() {
   // Response (PONG) is sent automatically by protocol handler
 }
 
+void setupMcpReset() {
+  pinMode(MCP_RESET_PIN, OUTPUT);
+  digitalWrite(MCP_RESET_PIN, HIGH); // Turn on MCP reset pin (active LOW)
+}
 
 void setup() {
   // put your setup code here, to run once:
@@ -588,9 +595,21 @@ void setup() {
   rotary.setLeftRotationHandler(onLeft);
 
   // MCP23017 setup
-  Wire.pins(5, 4);
+  Wire.pins(5, 4); // D1 (SCL), D2 (SDA) on NodeMCU
   // Wire.begin();
   // Wire.setClock(400000); // 400kHz I2C
+
+  setupMcpReset();
+
+  // Reset MCP23017 chips by toggling reset pin LOW briefly
+  digitalWrite(MCP_RESET_PIN, LOW);
+  delay(100);
+  digitalWrite(MCP_RESET_PIN, HIGH);
+  delay(100);
+  digitalWrite(MCP_RESET_PIN, LOW);
+  delay(100);
+  digitalWrite(MCP_RESET_PIN, HIGH);
+  delay(100);
 
   if (!mcp0.begin_I2C(0x20, &Wire)) {
     Serial.println("Error initializing MCP23017 0x20. Check connections.");
@@ -705,6 +724,12 @@ void handleSerialInput(char c) {
 
 void loop() {
   if (!setupOk) {
+    // Blink with built-in LED to indicate setup failure
+
+    digitalWrite(BUILTIN_LED_PIN, LOW);
+    delay(50);
+    digitalWrite(BUILTIN_LED_PIN, HIGH);
+    delay(500);
     return;
   }
 
