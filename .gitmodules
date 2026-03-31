@@ -13,3 +13,6 @@
 [submodule "lib/ESPRotary"]
 	path = lib/ESPRotary
 	url = https://github.com/LennartHennigs/ESPRotary.git
+[submodule "lib/Adafruit-MCP23017"]
+	path = lib/Adafruit-MCP23017
+	url = https://github.com/adafruit/Adafruit-MCP23017-Arduino-Library.git
