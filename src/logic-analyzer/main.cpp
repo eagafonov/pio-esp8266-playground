@@ -567,6 +567,13 @@ void setupMcpReset() {
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
+
+#ifdef NATIVE_USB
+  while(!Serial) {
+    delay(10); // wait for serial port to connect. Needed for native USB
+  }
+#endif
+
   DEBUG_BEGIN(115200);
 
   DEBUG_EVENT("=== 65C02 Logic Analyzer Starting ===\r\n");
