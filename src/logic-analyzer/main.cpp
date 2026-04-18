@@ -602,9 +602,8 @@ void setup() {
   rotary.setLeftRotationHandler(onLeft);
 
   // MCP23017 setup
-  Wire.pins(5, 4); // D1 (SCL), D2 (SDA) on NodeMCU
-  // Wire.begin();
-  // Wire.setClock(400000); // 400kHz I2C
+  Wire.begin(HW_I2C_PIN_SDA, HW_I2C_PIN_SCL);
+  Wire.setClock(400000); // 400kHz is max for WeMo D1 Mini (ESP8266 at 80MHz)
 
   setupMcpReset();
 
