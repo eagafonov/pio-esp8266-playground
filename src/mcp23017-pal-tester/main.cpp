@@ -29,7 +29,7 @@ enum PinRole : uint8_t {
 // Uses MCP pins 0–21, leaves 22–31 ignored.
 // CLK is mapped to MCP pin 0 (lowest bit of the output counter).
 
-static PinRole pinRoles[32] = {
+static PinRole pinRolesATF22V10C[32] = {
   // MCP0 GPA0–GPA7 (indices 0–7)
   ROLE_OUTPUT,  // 0  → PAL pin 1  (CLK/I) — LSB of counter
   ROLE_OUTPUT,  // 1  → PAL pin 2  (I)
@@ -71,6 +71,50 @@ static PinRole pinRoles[32] = {
   ROLE_IGNORE,  // 31
 };
 
+// Address decoder for Ben Eater's 6502 breadboard computer
+
+static PinRole pinRolesBE6502[32] = {
+  // MCP0 GPA0–GPA7 (indices 0–7)
+  ROLE_OUTPUT,  // 0  → PAL pin 1  (I, CLK)
+  ROLE_OUTPUT,  // 1  → PAL pin 2  (I, A15)
+  ROLE_OUTPUT,  // 2  → PAL pin 3  (I, A14)
+  ROLE_OUTPUT,  // 3  → PAL pin 4  (I, A13)
+  ROLE_OUTPUT,  // 4  → PAL pin 5  (I, A12)
+  ROLE_IGNORE,  // 5  → PAL pin 6  (I)
+  ROLE_IGNORE,  // 6  → PAL pin 7  (I)
+  ROLE_IGNORE,  // 7  → PAL pin 8  (I)
+
+  // MCP0 GPB0–GPB7 (indices 8–15)
+  ROLE_IGNORE,  // 8  → PAL pin 9  (I)
+  ROLE_IGNORE,  // 9  → PAL pin 10 (I)
+  ROLE_IGNORE,  // 10 → PAL pin 11 (I)
+  ROLE_IGNORE,  // 11 → PAL pin 13 (I)
+  ROLE_IGNORE,  // 12 → PAL pin 14 (I/O)
+  ROLE_IGNORE,  // 13 → PAL pin 15 (I/O)
+  ROLE_IGNORE,  // 14 → PAL pin 16 (I/O)
+  ROLE_IGNORE,  // 15 → PAL pin 17 (I/O)
+
+  // MCP1 GPA0–GPA7 (indices 16–23)
+  ROLE_IGNORE,  // 16 → PAL pin 18 (I/O)
+  ROLE_IGNORE,  // 17 → PAL pin 19 (I/O)
+  ROLE_INPUT,   // 18 → PAL pin 20 (O, SERIAL /CS)
+  ROLE_INPUT,   // 19 → PAL pin 21 (O, VIA /CS)
+  ROLE_INPUT,   // 20 → PAL pin 22 (O, RAM /CS)
+  ROLE_INPUT,   // 21 → PAL pin 23 (O, ROM /CS)
+  ROLE_IGNORE,  // 22
+  ROLE_IGNORE,  // 23
+
+  // MCP1 GPB0–GPB7 (indices 24–31)
+  ROLE_IGNORE,  // 24
+  ROLE_IGNORE,  // 25
+  ROLE_IGNORE,  // 26
+  ROLE_IGNORE,  // 27
+  ROLE_IGNORE,  // 28
+  ROLE_IGNORE,  // 29
+  ROLE_IGNORE,  // 30
+  ROLE_IGNORE,  // 31
+};
+
 // ─── Globals ────────────────────────────────────────────────────────
 
 Adafruit_MCP23X17 mcp0;
@@ -95,7 +139,7 @@ bool testDone = false;
 
 // ─── Setup helpers ──────────────────────────────────────────────────
 
-void buildPinMaps() {
+void buildPinMaps(PinRole *pinRoles) {
   numOutputs = 0;
   numInputs  = 0;
 
@@ -111,7 +155,7 @@ void buildPinMaps() {
   }
 }
 
-void configureMcpPins() {
+void configureMcpPins(PinRole *pinRoles) {
   // Set pin directions on both MCPs
   for (uint8_t i = 0; i < 32; i++) {
     uint8_t mcpPin = i % 16;
@@ -251,8 +295,11 @@ void setup() {
 
   mcpSetupOk = true;
 
+  PinRole *currentPinRoles = pinRolesATF22V10C;
+  // PinRole *currentPinRoles = pinRolesBE6502;
+
   // Build pin maps and configure MCP directions
-  buildPinMaps();
+  buildPinMaps(currentPinRoles);
 
   if (numOutputs == 0) {
     Serial.println("Error: no output pins configured.");
@@ -268,7 +315,7 @@ void setup() {
 
   Serial.printf("Configured: %d PAL inputs, %d PAL outputs\r\n", numOutputs, numInputs);
 
-  configureMcpPins();
+  configureMcpPins(currentPinRoles);
 
   Serial.println("Send 'r' to run test, 'p' to print config.");
 }
