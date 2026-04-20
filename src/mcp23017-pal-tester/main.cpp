@@ -247,10 +247,12 @@ void printHeader() {
   Serial.println();
 
   Serial.println("#");
-  if (hasClk)
-    Serial.println("# pal_inputs_hex → before_clk_hex → after_clk_hex");
-  else
-    Serial.println("# pal_inputs_hex → pal_outputs_hex");
+  if (hasClk) {
+    Serial.println("# INPUT: OUTPUT [CLK unchanged]");
+    Serial.println("# INPUT: BEFORE_CLK: AFTER_CLK [CLK changed output]");
+  } else {
+    Serial.println("# INPUT: OUTPUT");
+  }
 }
 
 void runTest() {
@@ -277,12 +279,17 @@ void runTest() {
 
       writeClk(false);        // restore CLK low for next iteration
 
-      Serial.printf("0x%04lX → 0x%04lX → 0x%04lX\r\n",
-        (unsigned long)i, (unsigned long)beforeClk, (unsigned long)afterClk);
+      if (beforeClk != afterClk) {
+        Serial.printf("0x%04lX: 0x%04lX: 0x%04lX\r\n",
+          (unsigned long)i, (unsigned long)beforeClk, (unsigned long)afterClk);
+      } else {
+        Serial.printf("0x%04lX: 0x%04lX\r\n",
+          (unsigned long)i, (unsigned long)beforeClk);
+      }
     } else {
       delayMicroseconds(10);  // combinational settling time
       uint32_t outputs = readInputs();
-      Serial.printf("0x%04lX → 0x%04lX\r\n", (unsigned long)i, (unsigned long)outputs);
+      Serial.printf("0x%04lX: 0x%04lX\r\n", (unsigned long)i, (unsigned long)outputs);
     }
   }
 
