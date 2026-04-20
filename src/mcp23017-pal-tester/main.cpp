@@ -16,6 +16,7 @@ enum PinRole : uint8_t {
   ROLE_IGNORE = 0,  // not connected, left as Hi-Z input
   ROLE_OUTPUT = 1,  // MCP output → drives PAL input
   ROLE_INPUT  = 2,  // MCP input  ← reads PAL output
+  ROLE_CLK    = 3,  // MCP output → drives PAL clock pin (explicit toggle per combination)
 };
 
 // 32 pins total: 0–15 = MCP0, 16–31 = MCP1
@@ -24,14 +25,15 @@ enum PinRole : uint8_t {
 
 // ─── ATF22V10C default configuration ────────────────────────────────
 // 24-pin DIP: pin 12=GND, pin 24=VCC → 22 I/O pins to connect
-// PAL pins 1 (CLK), 2–11, 13 = inputs (12 total)
+// PAL pin 1 = CLK (dedicated clock, not enumerated)
+// PAL pins 2–11, 13 = inputs (11 total)
 // PAL pins 14–23 = outputs (10 total)
 // Uses MCP pins 0–21, leaves 22–31 ignored.
-// CLK is mapped to MCP pin 0 (lowest bit of the output counter).
+// CLK is mapped to MCP pin 0 — toggled explicitly per input combination.
 
 static PinRole pinRolesATF22V10C[32] = {
   // MCP0 GPA0–GPA7 (indices 0–7)
-  ROLE_OUTPUT,  // 0  → PAL pin 1  (CLK/I) — LSB of counter
+  ROLE_CLK,     // 0  → PAL pin 1  (CLK) — explicit clock, not part of counter
   ROLE_OUTPUT,  // 1  → PAL pin 2  (I)
   ROLE_OUTPUT,  // 2  → PAL pin 3  (I)
   ROLE_OUTPUT,  // 3  → PAL pin 4  (I)
@@ -131,8 +133,10 @@ struct PinMapping {
 
 PinMapping outputMap[32];
 PinMapping inputMap[32];
+PinMapping clkPin;        // clock pin mapping (valid when hasClk == true)
 uint8_t numOutputs = 0;
 uint8_t numInputs  = 0;
+bool hasClk = false;
 
 bool mcpSetupOk = false;
 bool testDone = false;
@@ -142,6 +146,7 @@ bool testDone = false;
 void buildPinMaps(PinRole *pinRoles) {
   numOutputs = 0;
   numInputs  = 0;
+  hasClk = false;
 
   for (uint8_t i = 0; i < 32; i++) {
     uint8_t mcpIdx = i / 16;
@@ -151,6 +156,9 @@ void buildPinMaps(PinRole *pinRoles) {
       outputMap[numOutputs++] = { mcpIdx, mcpPin };
     } else if (pinRoles[i] == ROLE_INPUT) {
       inputMap[numInputs++] = { mcpIdx, mcpPin };
+    } else if (pinRoles[i] == ROLE_CLK) {
+      clkPin = { mcpIdx, mcpPin };
+      hasClk = true;
     }
   }
 }
@@ -161,7 +169,7 @@ void configureMcpPins(PinRole *pinRoles) {
     uint8_t mcpPin = i % 16;
     Adafruit_MCP23X17 &mcp = (i < 16) ? mcp0 : mcp1;
 
-    if (pinRoles[i] == ROLE_OUTPUT) {
+    if (pinRoles[i] == ROLE_OUTPUT || pinRoles[i] == ROLE_CLK) {
       mcp.pinMode(mcpPin, OUTPUT);
     } else {
       // INPUT and IGNORE both set as inputs
@@ -171,6 +179,11 @@ void configureMcpPins(PinRole *pinRoles) {
 }
 
 // ─── Test logic ─────────────────────────────────────────────────────
+
+void writeClk(bool high) {
+  Adafruit_MCP23X17 &mcp = (clkPin.mcpIndex == 0) ? mcp0 : mcp1;
+  mcp.digitalWrite(clkPin.mcpPin, high ? HIGH : LOW);
+}
 
 void writeOutputs(uint32_t value) {
   // Scatter bits from 'value' to the output pins across both MCPs
@@ -211,6 +224,9 @@ void printHeader() {
   Serial.println("# PAL Truth Table");
   Serial.printf("# PAL inputs (active drive):  %d\r\n", numOutputs);
   Serial.printf("# PAL outputs (active read):  %d\r\n", numInputs);
+  Serial.printf("# Clock pin: %s\r\n", hasClk
+    ? (String("MCP") + clkPin.mcpIndex + "." + clkPin.mcpPin + " (dual read: before + after rising edge)").c_str()
+    : "none (combinational only)");
   Serial.printf("# Total combinations: %lu\r\n", (unsigned long)(1UL << numOutputs));
   Serial.println("#");
 
@@ -231,7 +247,10 @@ void printHeader() {
   Serial.println();
 
   Serial.println("#");
-  Serial.println("# pal_inputs_hex → pal_outputs_hex");
+  if (hasClk)
+    Serial.println("# pal_inputs_hex → before_clk_hex → after_clk_hex");
+  else
+    Serial.println("# pal_inputs_hex → pal_outputs_hex");
 }
 
 void runTest() {
@@ -239,14 +258,32 @@ void runTest() {
 
   printHeader();
 
+  // Ensure CLK starts low
+  if (hasClk) writeClk(false);
+
   unsigned long startTime = millis();
 
   for (uint32_t i = 0; i < totalCombinations; i++) {
     writeOutputs(i);
-    delayMicroseconds(10);  // allow PAL combinational logic to settle
-    uint32_t outputs = readInputs();
 
-    Serial.printf("0x%04lX → 0x%04lX\r\n", (unsigned long)i, (unsigned long)outputs);
+    if (hasClk) {
+      // CLK is already low (pre-condition from previous iteration or init)
+      delayMicroseconds(10);  // combinational settling with CLK low
+      uint32_t beforeClk = readInputs();
+
+      writeClk(true);         // rising edge — registered outputs latch here
+      delayMicroseconds(10);  // clock-to-output propagation
+      uint32_t afterClk = readInputs();
+
+      writeClk(false);        // restore CLK low for next iteration
+
+      Serial.printf("0x%04lX → 0x%04lX → 0x%04lX\r\n",
+        (unsigned long)i, (unsigned long)beforeClk, (unsigned long)afterClk);
+    } else {
+      delayMicroseconds(10);  // combinational settling time
+      uint32_t outputs = readInputs();
+      Serial.printf("0x%04lX → 0x%04lX\r\n", (unsigned long)i, (unsigned long)outputs);
+    }
   }
 
   unsigned long elapsed = millis() - startTime;
