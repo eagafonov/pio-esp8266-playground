@@ -19,6 +19,11 @@ enum PinRole : uint8_t {
   ROLE_CLK    = 3,  // MCP output → drives PAL clock pin (explicit toggle per combination)
 };
 
+struct PinConfig {
+  PinRole role;
+  const char *name;  // friendly name (e.g. "A15", "ROM /CS"), NULL for unnamed
+};
+
 // 32 pins total: 0–15 = MCP0, 16–31 = MCP1
 // Configure this array for your chip under test.
 // Pins are numbered sequentially: MCP0.GPA0=0 ... MCP0.GPB7=15, MCP1.GPA0=16 ... MCP1.GPB7=31
@@ -31,90 +36,90 @@ enum PinRole : uint8_t {
 // Uses MCP pins 0–21, leaves 22–31 ignored.
 // CLK is mapped to MCP pin 0 — toggled explicitly per input combination.
 
-static PinRole pinRolesATF22V10C[32] = {
+static PinConfig pinRolesATF22V10C[32] = {
   // MCP0 GPA0–GPA7 (indices 0–7)
-  ROLE_CLK,     // 0  → PAL pin 1  (CLK) — explicit clock, not part of counter
-  ROLE_OUTPUT,  // 1  → PAL pin 2  (I)
-  ROLE_OUTPUT,  // 2  → PAL pin 3  (I)
-  ROLE_OUTPUT,  // 3  → PAL pin 4  (I)
-  ROLE_OUTPUT,  // 4  → PAL pin 5  (I)
-  ROLE_OUTPUT,  // 5  → PAL pin 6  (I)
-  ROLE_OUTPUT,  // 6  → PAL pin 7  (I)
-  ROLE_OUTPUT,  // 7  → PAL pin 8  (I)
+  { ROLE_CLK,    "CLK"  },  // 0  → PAL pin 1
+  { ROLE_OUTPUT, "I2"   },  // 1  → PAL pin 2
+  { ROLE_OUTPUT, "I3"   },  // 2  → PAL pin 3
+  { ROLE_OUTPUT, "I4"   },  // 3  → PAL pin 4
+  { ROLE_OUTPUT, "I5"   },  // 4  → PAL pin 5
+  { ROLE_OUTPUT, "I6"   },  // 5  → PAL pin 6
+  { ROLE_OUTPUT, "I7"   },  // 6  → PAL pin 7
+  { ROLE_OUTPUT, "I8"   },  // 7  → PAL pin 8
 
   // MCP0 GPB0–GPB7 (indices 8–15)
-  ROLE_OUTPUT,  // 8  → PAL pin 9  (I)
-  ROLE_OUTPUT,  // 9  → PAL pin 10 (I)
-  ROLE_OUTPUT,  // 10 → PAL pin 11 (I)
-  ROLE_OUTPUT,  // 11 → PAL pin 13 (I)
-  ROLE_INPUT,   // 12 → PAL pin 14 (I/O)
-  ROLE_INPUT,   // 13 → PAL pin 15 (I/O)
-  ROLE_INPUT,   // 14 → PAL pin 16 (I/O)
-  ROLE_INPUT,   // 15 → PAL pin 17 (I/O)
+  { ROLE_OUTPUT, "I9"   },  // 8  → PAL pin 9
+  { ROLE_OUTPUT, "I10"  },  // 9  → PAL pin 10
+  { ROLE_OUTPUT, "I11"  },  // 10 → PAL pin 11
+  { ROLE_OUTPUT, "I13"  },  // 11 → PAL pin 13
+  { ROLE_INPUT,  "IO14" },  // 12 → PAL pin 14
+  { ROLE_INPUT,  "IO15" },  // 13 → PAL pin 15
+  { ROLE_INPUT,  "IO16" },  // 14 → PAL pin 16
+  { ROLE_INPUT,  "IO17" },  // 15 → PAL pin 17
 
   // MCP1 GPA0–GPA7 (indices 16–23)
-  ROLE_INPUT,   // 16 → PAL pin 18 (I/O)
-  ROLE_INPUT,   // 17 → PAL pin 19 (I/O)
-  ROLE_INPUT,   // 18 → PAL pin 20 (I/O)
-  ROLE_INPUT,   // 19 → PAL pin 21 (I/O)
-  ROLE_INPUT,   // 20 → PAL pin 22 (I/O)
-  ROLE_INPUT,   // 21 → PAL pin 23 (I/O)
-  ROLE_IGNORE,  // 22
-  ROLE_IGNORE,  // 23
+  { ROLE_INPUT,  "IO18" },  // 16 → PAL pin 18
+  { ROLE_INPUT,  "IO19" },  // 17 → PAL pin 19
+  { ROLE_INPUT,  "IO20" },  // 18 → PAL pin 20
+  { ROLE_INPUT,  "IO21" },  // 19 → PAL pin 21
+  { ROLE_INPUT,  "IO22" },  // 20 → PAL pin 22
+  { ROLE_INPUT,  "IO23" },  // 21 → PAL pin 23
+  { ROLE_IGNORE, NULL   },  // 22
+  { ROLE_IGNORE, NULL   },  // 23
 
   // MCP1 GPB0–GPB7 (indices 24–31)
-  ROLE_IGNORE,  // 24
-  ROLE_IGNORE,  // 25
-  ROLE_IGNORE,  // 26
-  ROLE_IGNORE,  // 27
-  ROLE_IGNORE,  // 28
-  ROLE_IGNORE,  // 29
-  ROLE_IGNORE,  // 30
-  ROLE_IGNORE,  // 31
+  { ROLE_IGNORE, NULL   },  // 24
+  { ROLE_IGNORE, NULL   },  // 25
+  { ROLE_IGNORE, NULL   },  // 26
+  { ROLE_IGNORE, NULL   },  // 27
+  { ROLE_IGNORE, NULL   },  // 28
+  { ROLE_IGNORE, NULL   },  // 29
+  { ROLE_IGNORE, NULL   },  // 30
+  { ROLE_IGNORE, NULL   },  // 31
 };
 
 // Address decoder for Ben Eater's 6502 breadboard computer
 
-static PinRole pinRolesBE6502[32] = {
+static PinConfig pinRolesBE6502[32] = {
   // MCP0 GPA0–GPA7 (indices 0–7)
-  ROLE_OUTPUT,  // 0  → PAL pin 1  (I, CLK)
-  ROLE_OUTPUT,  // 1  → PAL pin 2  (I, A15)
-  ROLE_OUTPUT,  // 2  → PAL pin 3  (I, A14)
-  ROLE_OUTPUT,  // 3  → PAL pin 4  (I, A13)
-  ROLE_OUTPUT,  // 4  → PAL pin 5  (I, A12)
-  ROLE_IGNORE,  // 5  → PAL pin 6  (I)
-  ROLE_IGNORE,  // 6  → PAL pin 7  (I)
-  ROLE_IGNORE,  // 7  → PAL pin 8  (I)
+  { ROLE_CLK,    "CLK"        },  // 0  → PAL pin 1
+  { ROLE_OUTPUT, "A15"        },  // 1  → PAL pin 2
+  { ROLE_OUTPUT, "A14"        },  // 2  → PAL pin 3
+  { ROLE_OUTPUT, "A13"        },  // 3  → PAL pin 4
+  { ROLE_OUTPUT, "A12"        },  // 4  → PAL pin 5
+  { ROLE_IGNORE, NULL         },  // 5  → PAL pin 6
+  { ROLE_IGNORE, NULL         },  // 6  → PAL pin 7
+  { ROLE_IGNORE, NULL         },  // 7  → PAL pin 8
 
   // MCP0 GPB0–GPB7 (indices 8–15)
-  ROLE_IGNORE,  // 8  → PAL pin 9  (I)
-  ROLE_IGNORE,  // 9  → PAL pin 10 (I)
-  ROLE_IGNORE,  // 10 → PAL pin 11 (I)
-  ROLE_IGNORE,  // 11 → PAL pin 13 (I)
-  ROLE_IGNORE,  // 12 → PAL pin 14 (I/O)
-  ROLE_IGNORE,  // 13 → PAL pin 15 (I/O)
-  ROLE_IGNORE,  // 14 → PAL pin 16 (I/O)
-  ROLE_IGNORE,  // 15 → PAL pin 17 (I/O)
+  { ROLE_IGNORE, NULL         },  // 8  → PAL pin 9
+  { ROLE_IGNORE, NULL         },  // 9  → PAL pin 10
+  { ROLE_IGNORE, NULL         },  // 10 → PAL pin 11
+  { ROLE_IGNORE, NULL         },  // 11 → PAL pin 13
+  { ROLE_IGNORE, NULL         },  // 12 → PAL pin 14
+  { ROLE_IGNORE, NULL         },  // 13 → PAL pin 15
+  { ROLE_IGNORE, NULL         },  // 14 → PAL pin 16
+  { ROLE_IGNORE, NULL         },  // 15 → PAL pin 17
 
   // MCP1 GPA0–GPA7 (indices 16–23)
-  ROLE_IGNORE,  // 16 → PAL pin 18 (I/O)
-  ROLE_IGNORE,  // 17 → PAL pin 19 (I/O)
-  ROLE_INPUT,   // 18 → PAL pin 20 (O, SERIAL /CS)
-  ROLE_INPUT,   // 19 → PAL pin 21 (O, VIA /CS)
-  ROLE_INPUT,   // 20 → PAL pin 22 (O, RAM /CS)
-  ROLE_INPUT,   // 21 → PAL pin 23 (O, ROM /CS)
-  ROLE_IGNORE,  // 22
-  ROLE_IGNORE,  // 23
+  { ROLE_IGNORE, NULL         },  // 16 → PAL pin 18
+  { ROLE_IGNORE, NULL         },  // 17 → PAL pin 19
+  { ROLE_INPUT,  "SERIAL /CS" },  // 18 → PAL pin 20
+  { ROLE_INPUT,  "VIA /CS"    },  // 19 → PAL pin 21
+  { ROLE_INPUT,  "RAM /CS"    },  // 20 → PAL pin 22
+  { ROLE_INPUT,  "ROM /CS"    },  // 21 → PAL pin 23
+  { ROLE_IGNORE, NULL         },  // 22
+  { ROLE_IGNORE, NULL         },  // 23
 
   // MCP1 GPB0–GPB7 (indices 24–31)
-  ROLE_IGNORE,  // 24
-  ROLE_IGNORE,  // 25
-  ROLE_IGNORE,  // 26
-  ROLE_IGNORE,  // 27
-  ROLE_IGNORE,  // 28
-  ROLE_IGNORE,  // 29
-  ROLE_IGNORE,  // 30
-  ROLE_IGNORE,  // 31
+  { ROLE_IGNORE, NULL         },  // 24
+  { ROLE_IGNORE, NULL         },  // 25
+  { ROLE_IGNORE, NULL         },  // 26
+  { ROLE_IGNORE, NULL         },  // 27
+  { ROLE_IGNORE, NULL         },  // 28
+  { ROLE_IGNORE, NULL         },  // 29
+  { ROLE_IGNORE, NULL         },  // 30
+  { ROLE_IGNORE, NULL         },  // 31
 };
 
 // ─── Globals ────────────────────────────────────────────────────────
@@ -127,8 +132,9 @@ Adafruit_MCP23X17 mcp1;
 // inputMap[i]  = { mcpIndex (0 or 1), pin (0–15) } for the i-th input bit
 
 struct PinMapping {
-  uint8_t mcpIndex;  // 0 or 1
-  uint8_t mcpPin;    // 0–15
+  uint8_t mcpIndex;   // 0 or 1
+  uint8_t mcpPin;     // 0–15
+  const char *name;   // friendly name from PinConfig, NULL if unnamed
 };
 
 PinMapping outputMap[32];
@@ -143,7 +149,7 @@ bool testDone = false;
 
 // ─── Setup helpers ──────────────────────────────────────────────────
 
-void buildPinMaps(PinRole *pinRoles) {
+void buildPinMaps(PinConfig *pins) {
   numOutputs = 0;
   numInputs  = 0;
   hasClk = false;
@@ -151,25 +157,26 @@ void buildPinMaps(PinRole *pinRoles) {
   for (uint8_t i = 0; i < 32; i++) {
     uint8_t mcpIdx = i / 16;
     uint8_t mcpPin = i % 16;
+    const char *name = pins[i].name;
 
-    if (pinRoles[i] == ROLE_OUTPUT) {
-      outputMap[numOutputs++] = { mcpIdx, mcpPin };
-    } else if (pinRoles[i] == ROLE_INPUT) {
-      inputMap[numInputs++] = { mcpIdx, mcpPin };
-    } else if (pinRoles[i] == ROLE_CLK) {
-      clkPin = { mcpIdx, mcpPin };
+    if (pins[i].role == ROLE_OUTPUT) {
+      outputMap[numOutputs++] = { mcpIdx, mcpPin, name };
+    } else if (pins[i].role == ROLE_INPUT) {
+      inputMap[numInputs++] = { mcpIdx, mcpPin, name };
+    } else if (pins[i].role == ROLE_CLK) {
+      clkPin = { mcpIdx, mcpPin, name };
       hasClk = true;
     }
   }
 }
 
-void configureMcpPins(PinRole *pinRoles) {
+void configureMcpPins(PinConfig *pins) {
   // Set pin directions on both MCPs
   for (uint8_t i = 0; i < 32; i++) {
     uint8_t mcpPin = i % 16;
     Adafruit_MCP23X17 &mcp = (i < 16) ? mcp0 : mcp1;
 
-    if (pinRoles[i] == ROLE_OUTPUT || pinRoles[i] == ROLE_CLK) {
+    if (pins[i].role == ROLE_OUTPUT || pins[i].role == ROLE_CLK) {
       mcp.pinMode(mcpPin, OUTPUT);
     } else {
       // INPUT and IGNORE both set as inputs
@@ -179,6 +186,13 @@ void configureMcpPins(PinRole *pinRoles) {
 }
 
 // ─── Test logic ─────────────────────────────────────────────────────
+
+void printPinName(const PinMapping &pin) {
+  if (pin.name)
+    Serial.print(pin.name);
+  else
+    Serial.printf("MCP%d.%d", pin.mcpIndex, pin.mcpPin);
+}
 
 void writeClk(bool high) {
   Adafruit_MCP23X17 &mcp = (clkPin.mcpIndex == 0) ? mcp0 : mcp1;
@@ -225,7 +239,7 @@ void printHeader() {
   Serial.printf("# PAL inputs (active drive):  %d\r\n", numOutputs);
   Serial.printf("# PAL outputs (active read):  %d\r\n", numInputs);
   Serial.printf("# Clock pin: %s\r\n", hasClk
-    ? (String("MCP") + clkPin.mcpIndex + "." + clkPin.mcpPin + " (dual read: before + after rising edge)").c_str()
+    ? (String(clkPin.name ? clkPin.name : "CLK") + " (dual read: before + after rising edge)").c_str()
     : "none (combinational only)");
   Serial.printf("# Total combinations: %lu\r\n", (unsigned long)(1UL << numOutputs));
   Serial.println("#");
@@ -234,7 +248,7 @@ void printHeader() {
   Serial.print("# PAL input bits (LSB first):  ");
   for (uint8_t i = 0; i < numOutputs; i++) {
     if (i > 0) Serial.print(", ");
-    Serial.printf("MCP%d.%d", outputMap[i].mcpIndex, outputMap[i].mcpPin);
+    printPinName(outputMap[i]);
   }
   Serial.println();
 
@@ -242,7 +256,7 @@ void printHeader() {
   Serial.print("# PAL output bits (LSB first): ");
   for (uint8_t i = 0; i < numInputs; i++) {
     if (i > 0) Serial.print(", ");
-    Serial.printf("MCP%d.%d", inputMap[i].mcpIndex, inputMap[i].mcpPin);
+    printPinName(inputMap[i]);
   }
   Serial.println();
 
@@ -263,6 +277,8 @@ void runTest() {
   // Ensure CLK starts low
   if (hasClk) writeClk(false);
 
+  uint32_t registeredMask = 0;  // bits that ever changed on clock edge
+
   unsigned long startTime = millis();
 
   for (uint32_t i = 0; i < totalCombinations; i++) {
@@ -279,7 +295,10 @@ void runTest() {
 
       writeClk(false);        // restore CLK low for next iteration
 
-      if (beforeClk != afterClk) {
+      uint32_t changedBits = beforeClk ^ afterClk;
+      registeredMask |= changedBits;
+
+      if (changedBits) {
         Serial.printf("0x%04lX: 0x%04lX: 0x%04lX\r\n",
           (unsigned long)i, (unsigned long)beforeClk, (unsigned long)afterClk);
       } else {
@@ -297,6 +316,35 @@ void runTest() {
 
   Serial.println("#");
   Serial.printf("# Done. %lu rows in %lu ms\r\n", (unsigned long)totalCombinations, (unsigned long)elapsed);
+
+  if (hasClk) {
+    Serial.println("#");
+    if (registeredMask == 0) {
+      Serial.println("# All outputs are combinational (no change on clock edge)");
+    } else {
+      Serial.print("# Registered output bits: ");
+      bool first = true;
+      for (uint8_t i = 0; i < numInputs; i++) {
+        if (registeredMask & (1UL << i)) {
+          if (!first) Serial.print(", ");
+          printPinName(inputMap[i]);
+          first = false;
+        }
+      }
+      Serial.println();
+
+      Serial.print("# Combinational output bits: ");
+      first = true;
+      for (uint8_t i = 0; i < numInputs; i++) {
+        if (!(registeredMask & (1UL << i))) {
+          if (!first) Serial.print(", ");
+          printPinName(inputMap[i]);
+          first = false;
+        }
+      }
+      Serial.println();
+    }
+  }
 
   // Reset all outputs to 0
   writeOutputs(0);
@@ -339,8 +387,8 @@ void setup() {
 
   mcpSetupOk = true;
 
-  PinRole *currentPinRoles = pinRolesATF22V10C;
-  // PinRole *currentPinRoles = pinRolesBE6502;
+  // PinConfig *currentPinRoles = pinRolesATF22V10C;
+  PinConfig *currentPinRoles = pinRolesBE6502;
 
   // Build pin maps and configure MCP directions
   buildPinMaps(currentPinRoles);
