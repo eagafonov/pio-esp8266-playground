@@ -392,6 +392,13 @@ void printBusState(uint16_t addressBus, uint8_t data, Flags flags, unsigned long
         // write serial data
         Serial.printf(" Serial control write 0x%02X", data);
       }
+    } else if (addressBus <= 0xff) {
+      // zero-page
+      if (flags.bits.rwb == 1) {
+        Serial.printf(" ZP 0x%02X read 0x%02X", addressBus, data);
+      } else {
+        Serial.printf(" ZP 0x%02X write 0x%02X", addressBus, data);
+      }
     }
 
     // decode opcode when fetching instruction
