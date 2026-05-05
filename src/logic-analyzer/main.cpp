@@ -420,22 +420,72 @@ void printBusState(uint16_t addressBus, uint8_t data, Flags flags, unsigned long
   Serial.println();
 }
 
+/**
+ * readMcpV1
+ *
+ * read MCP and map data according to the first breadboard prototype:
+ * MCP0, Port A: address bus, lower 8 bits
+ * MCP0, Port B: address bus, high 8 bits
+ * MCP1, Port A: data bus
+ * MCP1, Port B: CPU flags
+ */
+void readMcpV1(uint16_t &out_address, uint8_t &out_data, uint8_t &out_flags) {
+  out_address = mcp0.readGPIOAB();
+
+  auto dataBusFlags = mcp1.readGPIOAB();
+  out_flags = dataBusFlags >> 8;
+  out_data = dataBusFlags & 0xFF;
+}
+
+uint8_t reverse(uint8_t b) {
+  b = (b & 0xF0) >> 4 | (b & 0x0F) << 4; // F0 = 1111 0000  0F = 0000 1111
+  b = (b & 0xCC) >> 2 | (b & 0x33) << 2; // CC = 1100 1100, 33 = 0011 0011
+  b = (b & 0xAA) >> 1 | (b & 0x55) << 1; // AA = 1010 1010  55 = 0101 0101
+
+  return b;
+}
+
+/**
+ * readMcpV2
+ *
+ * read MCP and map data according to the PCB prototype:
+ * MCP0, Port A: address bus, high 8 bits (reverse bit order!!!)
+ * MCP0, Port B: address bus, lower 8 bits
+ * MCP1, Port A: CPU flags
+ * MCP1, Port B: data bus
+ */
+void readMcpV2(uint16_t &out_address, uint8_t &out_data, uint8_t &out_flags) {
+  auto mcpData = mcp0.readGPIOAB();
+
+  out_address = (((uint16_t)reverse((uint8_t)(mcpData & 0xFF))) << 8) | (uint8_t)(mcpData >> 8);
+
+  auto dataBusFlags = mcp1.readGPIOAB();
+  out_flags = dataBusFlags & 0xFF;
+  out_data = dataBusFlags >> 8;
+}
+
+typedef decltype(readMcpV1) readMcpFunc;
+
+// readMcpFunc *readMcp = &readMcpV1;
+readMcpFunc *readMcp = &readMcpV2;
+
 void singleClockPulse(unsigned long duration) {
   digitalWrite(LED_PIN, LOW);
 
-  auto addressBus = mcp0.readGPIOAB();
-  auto dataBusFlags = mcp1.readGPIOAB();
+  uint16_t addressBus;
+  uint8_t dataBus;
+  Flags flags; // readMcp will initialize it
+
+  readMcp(addressBus, dataBus, flags.data);
 
   delay(duration);
   digitalWrite(LED_PIN, HIGH);
 
-  Flags flags= { .data = dataBusFlags >> 8 };
-
   // Send bus state via binary protocol if streaming, otherwise print to Serial
   if (protocol.isStreaming()) {
-    protocol.sendBusState(clockCounter, addressBus, dataBusFlags & 0xFF, flags.data);
+    protocol.sendBusState(clockCounter, addressBus, dataBus, flags.data);
   } else {
-    printBusState(addressBus, dataBusFlags & 0xFF, flags, clockCounter);
+    printBusState(addressBus, dataBus, flags, clockCounter);
   }
 
   // Keep clock zero if reset is active
@@ -544,19 +594,16 @@ void protocolOnGetStatus() {
 
   // Get current bus state (use dummy values if MCP not ready)
   uint16_t addressBus = 0x0000;
-  uint16_t dataBusFlags = 0x0000;
+  uint8_t dataBus = 0x00;
+  Flags flags = { .data=0 };
 
   if (setupOk) {
-    addressBus = mcp0.readGPIOAB();
-    dataBusFlags = mcp1.readGPIOAB();
+    readMcp(addressBus, dataBus, flags.data);
   }
-
-  Flags flags = { .data = (uint8_t)(dataBusFlags >> 8) };
 
   uint8_t mode = (clockMode == ClockMode::AUTOMATIC) ? PROTO_CLOCK_AUTOMATIC : PROTO_CLOCK_MANUAL;
 
-  protocol.sendStatusReport(mode, clockIndex, clockCounter,
-                           addressBus, dataBusFlags & 0xFF, flags.data);
+  protocol.sendStatusReport(mode, clockIndex, clockCounter, addressBus, dataBus, flags.data);
 }
 
 void protocolOnResetCounter() {
@@ -802,17 +849,18 @@ void loop() {
   }
 
   if (clockMode == ClockMode::AUTOMATIC) {
-    // mcp0.readGPIOA();
-    auto addressBus = mcp0.readGPIOAB();
-    auto dataBusFlags = mcp1.readGPIOAB();
+    uint16_t addressBus;
+    uint8_t dataBus;
+    Flags flags; // readMcp will initialize it
 
-    // Dump  address and data bus every loop when it is chanaged
+    readMcp(addressBus, dataBus, flags.data);
+
+    // Dump address and data bus every loop when it is changed
     static uint16_t lastAddressBus = 0xFFFF;
-    static uint16_t lastDataBusFlags = 0xFFFF;
+    static uint8_t lastDataBus = 0xFF;
+    static uint8_t lastFlagsData = 0xFF;
 
-    if (addressBus != lastAddressBus || dataBusFlags != lastDataBusFlags) {
-      Flags flags= { .data = dataBusFlags >> 8 };
-
+    if (addressBus != lastAddressBus || dataBus != lastDataBus || lastFlagsData != flags.data) {
       // Keep clock zero if reset is active
       if (!flags.bits.resetb) {
         clockCounter = 0;
@@ -821,14 +869,15 @@ void loop() {
       if (flags.bits.clock == 1) {
         // Send bus state via binary protocol if streaming is enabled
         if (protocol.isStreaming()) {
-          protocol.sendBusState(clockCounter, addressBus, dataBusFlags & 0xFF, flags.data);
+          protocol.sendBusState(clockCounter, addressBus, dataBus, flags.data);
         } else {
-          printBusState(addressBus, dataBusFlags & 0xFF, flags, clockCounter);
+          printBusState(addressBus, dataBus, flags, clockCounter);
         }
       }
 
       lastAddressBus = addressBus;
-      lastDataBusFlags = dataBusFlags;
+      lastDataBus = dataBus;
+      lastFlagsData = flags.data;
     }
   }
 
