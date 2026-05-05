@@ -63,7 +63,7 @@ typedef union {
     uint8_t irqb : 1;  // IRQ Bar
     uint8_t resetb : 1;  // Reset Bar
     uint8_t unused : 3;
-    uint8_t clock : 1; // Clock (inverted to convert 3.3 -> 5V logic using transistor)
+    uint8_t clock : 1; // Clock
   } bits;
 } Flags;
 #pragma pack(pop)
@@ -320,7 +320,7 @@ void printBusState(uint16_t addressBus, uint8_t data, Flags flags, unsigned long
 
   Serial.printf("%5d %c addr:0x%04X data:0x%02X flags:0x%02X (%c%c%c)",
     clockCounter,
-    flags.bits.clock ? ' ' : '|',
+    flags.bits.clock ? '|' : ' ',
     addressBus,
     data & 0xFF,
     flags.data,
@@ -332,7 +332,7 @@ void printBusState(uint16_t addressBus, uint8_t data, Flags flags, unsigned long
 
   if (!flags.bits.resetb) {
     Serial.print(" RESET");
-  } else if (flags.bits.clock == 0) {
+  } else if (flags.bits.clock == 1) {
     // Print note when clock pulse is active
     if (addressBus == 0xFFFE  || addressBus == 0xFFFF) {
       Serial.print(" " );
@@ -808,7 +808,7 @@ void loop() {
         clockCounter = 0;
       }
 
-      if (flags.bits.clock == 0) {
+      if (flags.bits.clock == 1) {
         // Send bus state via binary protocol if streaming is enabled
         if (protocol.isStreaming()) {
           protocol.sendBusState(clockCounter, addressBus, dataBusFlags & 0xFF, flags.data);
