@@ -234,6 +234,8 @@ const char noteIrqVectorRead[] = "IRQ Vector Read";
 const char noteResetVectorRead[] = "Reset Vector Read";
 const char noteStackRead[] = "Stack read";
 const char noteStackWrite[] = "Stack write";
+const char noteViaRead[] = "VIA read";
+const char noteViaWrite[] = "VIA write";
 
 const char* opcodeNames[256] = {
     /* 00 */
@@ -343,9 +345,10 @@ void printBusState(uint16_t addressBus, uint8_t data, Flags flags, unsigned long
     } else if (addressBus > 0x0100 && addressBus <= 0x01FF) {
       Serial.print(" " );
       Serial.print(flags.bits.rwb ? noteStackRead : noteStackWrite);
-    } else if (addressBus == 0x6000 && flags.bits.rwb == 0) {
-      // Write to IO area at 0x6000
-      Serial.printf(" IO 0x6000 Write 0x%02X", data);
+    } else if ((addressBus & 0xF000) == 0x6000) {
+      // IO area at 0x6xxx
+      uint8_t reg = addressBus & 0x000F;
+      Serial.printf(" %s 0x%02X 0x%02X", (flags.bits.rwb ? noteViaRead : noteViaWrite), reg, data);
     } else if (addressBus == 0x5000) {
       if (flags.bits.rwb == 1) {
         // read serial data
