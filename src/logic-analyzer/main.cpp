@@ -123,15 +123,20 @@ void decClockIndex() {
 
 enum ClockMode {
   MANUAL = 0,
-  AUTOMATIC = 1
+  AUTOMATIC = 1,
+  EXT = 2,
 };
 
-ClockMode clockMode = ClockMode::MANUAL;
+ClockMode clockMode = ClockMode::EXT;
 unsigned long clockCounter = 0;
 
 void printClockMode() {
   Serial.print("Current clock mode: ");
-  Serial.println(clockMode == ClockMode::AUTOMATIC ? "Automatic" : "Manual");
+  switch (clockMode) {
+    case ClockMode::AUTOMATIC: Serial.println("Automatic"); break;
+    case ClockMode::EXT:       Serial.println("External"); break;
+    case ClockMode::MANUAL:    Serial.println("Manual"); break;
+  }
 }
 
 void toggleClockMode() {
@@ -491,15 +496,24 @@ void singleClockPulse(unsigned long duration) {
 /////////////////////////////////////////
 
 void protocolOnSetClockMode(uint8_t mode) {
-  DEBUG_EVENT("SET_CLOCK_MODE: %s\r\n", mode == PROTO_CLOCK_MANUAL ? "MANUAL" : "AUTOMATIC");
+  const char* modeName = mode == PROTO_CLOCK_MANUAL ? "MANUAL" :
+                         mode == PROTO_CLOCK_AUTOMATIC ? "AUTOMATIC" : "EXT";
+  DEBUG_EVENT("SET_CLOCK_MODE: %s\r\n", modeName);
 
   if (mode == PROTO_CLOCK_MANUAL) {
     if (clockMode != ClockMode::MANUAL) {
-      toggleClockMode();
+      stopClock();
+      clockMode = ClockMode::MANUAL;
     }
   } else if (mode == PROTO_CLOCK_AUTOMATIC) {
     if (clockMode != ClockMode::AUTOMATIC) {
-      toggleClockMode();
+      clockMode = ClockMode::AUTOMATIC;
+      setClock(clockIndex);
+    }
+  } else if (mode == PROTO_CLOCK_EXT) {
+    if (clockMode != ClockMode::EXT) {
+      stopClock();
+      clockMode = ClockMode::EXT;
     }
   }
 }
@@ -591,7 +605,13 @@ void protocolOnGetStatus() {
     readMcp(addressBus, dataBus, flags.data);
   }
 
-  uint8_t mode = (clockMode == ClockMode::AUTOMATIC) ? PROTO_CLOCK_AUTOMATIC : PROTO_CLOCK_MANUAL;
+  uint8_t mode = PROTO_CLOCK_MANUAL; // initialized to suppress warning
+  // Explicit cases for all ClockMode values — no default so compiler warns on missing cases
+  switch (clockMode) {
+    case ClockMode::AUTOMATIC: mode = PROTO_CLOCK_AUTOMATIC; break;
+    case ClockMode::EXT:       mode = PROTO_CLOCK_EXT; break;
+    case ClockMode::MANUAL:    mode = PROTO_CLOCK_MANUAL; break;
+  }
 
   protocol.sendStatusReport(mode, clockIndex, clockCounter, addressBus, dataBus, flags.data);
 }
@@ -698,9 +718,8 @@ void setup() {
   Serial.println("Binary protocol initialized");
   DEBUG_EVENT("Binary protocol initialized\r\n");
 
-  clockMode = ClockMode::AUTOMATIC;
+  clockMode = ClockMode::EXT;
   setClock(1); // Start with 1 Hz pulsing
-  DEBUG_EVENT("Clock mode: AUTOMATIC, speed index: 1\r\n");
 
   printClockMode();
 
@@ -772,6 +791,10 @@ void handleSerialInput(char c) {
     Serial.println(helpText);
   } else if (c == 's') { // switch to binary streaming mode for testing
     protocol.setStreaming(true);
+  } else if (c == 'x') { // switch to external clock mode
+    stopClock();
+    clockMode = ClockMode::EXT;
+    Serial.println("External clock mode");
   }
 }
 
@@ -838,7 +861,7 @@ void loop() {
     }
   }
 
-  if (clockMode == ClockMode::AUTOMATIC) {
+  if (clockMode == ClockMode::AUTOMATIC || clockMode == ClockMode::EXT) {
     uint16_t addressBus;
     uint8_t dataBus;
     Flags flags; // readMcp will initialize it
@@ -849,6 +872,17 @@ void loop() {
     static uint16_t lastAddressBus = 0xFFFF;
     static uint8_t lastDataBus = 0xFF;
     static uint8_t lastFlagsData = 0xFF;
+    static uint8_t lastClockState = 0xFF;
+
+    // Detect external clock transition
+    if ((clockMode == ClockMode::EXT) && (flags.bits.clock != lastClockState)) {
+        // Serial.printf("Clock transition: lastClockState:%d clockBit:%d clockCounter:%ld\r\n", lastClockState, flags.bits.clock, clockCounter);
+        lastClockState = flags.bits.clock;
+
+        // Add 1 on low->high
+        // Add 0 on high->low
+        clockCounter += flags.bits.clock ? 1 : 0;
+    }
 
     if (addressBus != lastAddressBus || dataBus != lastDataBus || lastFlagsData != flags.data) {
       // Keep clock zero if reset is active
@@ -856,13 +890,11 @@ void loop() {
         clockCounter = 0;
       }
 
-      if (flags.bits.clock == 1) {
-        // Send bus state via binary protocol if streaming is enabled
-        if (protocol.isStreaming()) {
-          protocol.sendBusState(clockCounter, addressBus, dataBus, flags.data);
-        } else {
-          printBusState(addressBus, dataBus, flags, clockCounter);
-        }
+      // Send bus state via binary protocol if streaming is enabled
+      if (protocol.isStreaming()) {
+        protocol.sendBusState(clockCounter, addressBus, dataBus, flags.data);
+      } else {
+        printBusState(addressBus, dataBus, flags, clockCounter);
       }
 
       lastAddressBus = addressBus;

@@ -254,7 +254,7 @@ void Protocol::handleSetClockMode(const uint8_t* payload, uint8_t length) {
 
   const SetClockModePayload* cmd = (const SetClockModePayload*)payload;
 
-  if (cmd->mode != PROTO_CLOCK_MANUAL && cmd->mode != PROTO_CLOCK_AUTOMATIC) {
+  if (cmd->mode != PROTO_CLOCK_MANUAL && cmd->mode != PROTO_CLOCK_AUTOMATIC && cmd->mode != PROTO_CLOCK_EXT) {
     DEBUG_ERROR("[ERROR] SET_CLOCK_MODE: Invalid mode: %d\r\n", cmd->mode);
     sendError(CMD_SET_CLOCK_MODE, ERR_INVALID_PARAMETER);
     return;

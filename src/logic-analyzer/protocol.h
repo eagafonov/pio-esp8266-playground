@@ -58,6 +58,7 @@ enum ResponseType : uint8_t {
 enum ProtocolClockMode : uint8_t {
   PROTO_CLOCK_MANUAL = 0x00,
   PROTO_CLOCK_AUTOMATIC = 0x01,
+  PROTO_CLOCK_EXT = 0x02,
 };
 
 // Error codes
