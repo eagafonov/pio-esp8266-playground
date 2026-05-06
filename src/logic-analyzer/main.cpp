@@ -5,13 +5,11 @@
 #include "protocol.h"
 #include "debug.h"
 
-#define EXTERNAL_LED_PIN 14 // GPIO14 on ESP8266, D5 on NodeMCU
 // #define BUTTON_PIN 16        // GPI15 on ESP8266, D8 on NodeMCU
 // #define BUTTON_PIN 2        // RX
 
 #define BUTTON_PIN 0        // GPIO0 D3 on ESP8266, D3 on NodeMCU (aka Flash button)
 
-// #define EXTERNAL_LED_PIN 16        // GPI15 on ESP8266, D8 on NodeMCU
 // #define BUTTON_PIN 14 // GPIO14 on ESP8266, D5 on NodeMCU
 
 #define BUILTIN_LED_PIN 2   // GPIO2 on ESP8266, D4 on NodeMCU (built-in LED)
@@ -23,7 +21,7 @@
 // #define MCP_RESET_PIN BUILTIN_LED_PIN   // Shared reset pin for MCP23017 chips (active LOW)
 #define MCP_RESET_PIN 15 // GPIO15 on ESP8266, D8 on NodeMCU
 
-#define LED_PIN EXTERNAL_LED_PIN
+#define CLOCK_OUT_PIN 14 // GPIO14 on ESP8266, D5 on NodeMCU
 
 // NOTE: GPIO16 (D0) doesn't support interrupts on ESP8266
 // Using GPIO4 (D2) instead for button with interrupt support
@@ -44,14 +42,6 @@ void IRAM_ATTR handleButtonPress() {
     // volatile read to ensure compiler does not optimize it away
     buttonPressed = digitalRead(BUTTON_PIN);
   }
-}
-
-void toggleLED() {
-  static bool ledState = false;
-  ledState = !ledState;
-  digitalWrite(LED_PIN, ledState);
-
-  Serial.println(ledState ? "ON" : "OFF");
 }
 
 #pragma pack(push, 1)
@@ -93,7 +83,7 @@ unsigned long clockPulseIntervals[] = {
 };
 
 uint8_t clockIndex = 0;
-int pulsePeriod = 0; // milliseconds, 0 means no pulsing
+unsigned long pulsePeriod = 0; // milliseconds, 0 means no pulsing
 
 void setClock(int index) {
   clockIndex = index;
@@ -113,7 +103,7 @@ void incClockIndex() {
     if (protocol.isStreaming()) {
       protocol.sendEvent(EVENT_CLOCK_SPEED_CHANGED, clockIndex);
     } else {
-      Serial.printf("Clock index increased to %d (%d ms)\r\n", clockIndex, clockPulseIntervals[clockIndex]);
+      Serial.printf("Clock index increased to %d (%ld ms)\r\n", clockIndex, clockPulseIntervals[clockIndex]);
     }
   }
 }
@@ -126,7 +116,7 @@ void decClockIndex() {
     if (protocol.isStreaming()) {
       protocol.sendEvent(EVENT_CLOCK_SPEED_CHANGED, clockIndex);
     } else {
-      Serial.printf("Clock index decreased to %d (%d ms)\r\n", clockIndex, clockPulseIntervals[clockIndex]);
+      Serial.printf("Clock index decreased to %d (%ld ms)\r\n", clockIndex, clockPulseIntervals[clockIndex]);
     }
   }
 }
@@ -177,7 +167,7 @@ void rotate(ESPRotary& r) {
   // convert to milliseconds period
   if (freq > 0) {
     pulsePeriod = 10000 / freq; // 0.1 Hz to ms
-    Serial.printf("Freq: %d * 0.1 Hz, Pulse period set to: %d\n", freq, pulsePeriod);
+    Serial.printf("Freq: %d * 0.1 Hz, Pulse period set to: %ld\n", freq, pulsePeriod);
   } else {
     pulsePeriod = -1; // disable pulsing
     Serial.printf("Pulse period disabled\n");
@@ -304,7 +294,7 @@ const char* opcodeNames[256] = {
 };
 
 // W65C51N Serial Communication Interface (SCI) status register bits
-typedef struct serial_status_reg_t {
+struct serial_status_reg_t {
     uint8_t parity_error : 1;
     uint8_t framing_error : 1;
     uint8_t overrun_error : 1;
@@ -320,7 +310,7 @@ void printBusState(uint16_t addressBus, uint8_t data, Flags flags, unsigned long
   // 1 = SYNC (Fetching new instruction)
   // 2 = IRQB (Interrupt Request)
 
-  Serial.printf("%5d %c addr:0x%04X data:0x%02X flags:0x%02X (%c%c%c)",
+  Serial.printf("%5ld %c addr:0x%04X data:0x%02X flags:0x%02X (%c%c%c)",
     clockCounter,
     flags.bits.clock ? '|' : ' ',
     addressBus,
@@ -470,7 +460,7 @@ typedef decltype(readMcpV1) readMcpFunc;
 readMcpFunc *readMcp = &readMcpV2;
 
 void singleClockPulse(unsigned long duration) {
-  digitalWrite(LED_PIN, LOW);
+  digitalWrite(CLOCK_OUT_PIN, HIGH);
 
   uint16_t addressBus;
   uint8_t dataBus;
@@ -479,7 +469,7 @@ void singleClockPulse(unsigned long duration) {
   readMcp(addressBus, dataBus, flags.data);
 
   delay(duration);
-  digitalWrite(LED_PIN, HIGH);
+  digitalWrite(CLOCK_OUT_PIN, LOW);
 
   // Send bus state via binary protocol if streaming, otherwise print to Serial
   if (protocol.isStreaming()) {
@@ -639,8 +629,8 @@ void setup() {
   Serial.println();
   Serial.println("Hello from PIO - Button Interrupt Demo");
 
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, HIGH);
+  pinMode(CLOCK_OUT_PIN, OUTPUT);
+  digitalWrite(CLOCK_OUT_PIN, LOW);
 
   // pinMode(BUTTON_PIN, INPUT_PULLUP); // Enable internal pull-up resistor
   // Attach interrupt: trigger on FALLING edge (button press pulls to ground)
@@ -766,14 +756,14 @@ void handleSerialInput(char c) {
     }
   }
   else if (c >= '1' && c <= '9') { // 1-9 change clock speed directly
-    int index = c - '0';
+    unsigned int index = c - '0';
     if (index < (sizeof(clockPulseIntervals) / sizeof(clockPulseIntervals[0]))) {
       if (clockMode == ClockMode::MANUAL) {
         toggleClockMode();
       }
       clockIndex = index;
       setClock(clockIndex);
-      Serial.printf("Clock index set to %d (%d ms)\r\n", clockIndex, clockPulseIntervals[clockIndex]);
+      Serial.printf("Clock index set to %d (%ld ms)\r\n", clockIndex, clockPulseIntervals[clockIndex]);
     }
   } else if (c == '0') { // Stop clock
     stopClock();
@@ -837,10 +827,10 @@ void loop() {
   if (clockMode == ClockMode::AUTOMATIC && pulsePeriod > 0) {
     if ((currentTime - pulseStartTime) < (pulsePeriod / 2)) {
       // HIGH phase
-      digitalWrite(LED_PIN, HIGH);
+      digitalWrite(CLOCK_OUT_PIN, HIGH);
     } else if ((currentTime - pulseStartTime) < pulsePeriod) {
       // LOW phase
-      digitalWrite(LED_PIN, LOW);
+      digitalWrite(CLOCK_OUT_PIN, LOW);
     } else {
       // Start new pulse cycle
       pulseStartTime = currentTime;
